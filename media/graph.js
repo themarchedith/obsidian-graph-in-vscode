@@ -1,21 +1,7 @@
 const vscode = acquireVsCodeApi();
 const host = document.querySelector("#graph");
-const controls = Object.fromEntries(
-  [...document.querySelectorAll("input")].map((input) => [input.id, input]),
-);
-
-const defaults = {
-  existing: false,
-  orphans: true,
-  labels: true,
-  nodeSize: 100,
-  linkWidth: 100,
-  centerForce: 28,
-  repelForce: 85,
-  linkForce: 45,
-  linkDistance: 100,
-};
-
+const controls = Object.fromEntries([...document.querySelectorAll("input")].map((input) => [input.id, input]));
+const defaults = { existing: false, orphans: true, labels: true, nodeSize: 100, linkWidth: 100, centerForce: 28, repelForce: 85, linkForce: 80, linkDistance: 100 };
 let app;
 let container;
 let nodes = [];
@@ -23,14 +9,10 @@ let edges = [];
 let simulation;
 let zoomHandler;
 let hoverId;
-let draggedNode;
-let pointerId = null;
-let dragStart;
-let movedDuringDrag = false;
 let viewport = { x: 0, y: 0, k: 1 };
+let dragStart;
 let pendingGraph = null;
 let resizeObserver;
-
 const nodeShapes = new Map();
 const edgeShapes = new Map();
 const labels = new Map();
@@ -40,6 +22,13 @@ const degrees = new Map();
 function option(name) {
   const control = controls[name];
   return control.type === "checkbox" ? control.checked : Number(control.value);
+}
+
+function viewportSize() {
+  return {
+    width: Math.max(1, host.clientWidth),
+    height: Math.max(1, host.clientHeight),
+  };
 }
 
 function color(folder) {
@@ -55,9 +44,9 @@ function color(folder) {
     : hue < 4 ? [0, secondary, chroma]
     : hue < 5 ? [secondary, 0, chroma]
     : [chroma, 0, secondary];
-  return (Math.round((red + match) * 255) << 16)
-    | (Math.round((green + match) * 255) << 8)
-    | Math.round((blue + match) * 255);
+  return (Math.round((red + match) * 255) << 16) |
+    (Math.round((green + match) * 255) << 8) |
+    Math.round((blue + match) * 255);
 }
 
 function nodeVisible(node) {
@@ -110,68 +99,8 @@ function relatedNodes() {
   return new Set([hoverId, ...(adjacency.get(hoverId) || [])]);
 }
 
-function radiusFor(node) {
-  return (5 + Math.min(12, Math.sqrt(degrees.get(node.id) || 0) * 3)) * option("nodeSize") / 100;
-}
-
-function graphPointFromClient(clientX, clientY) {
-  const rect = app.view.getBoundingClientRect();
-  return {
-    x: (clientX - rect.left - viewport.x) / viewport.k,
-    y: (clientY - rect.top - viewport.y) / viewport.k,
-  };
-}
-
-function nodeAt(point) {
-  let closest;
-  let closestDistance = Infinity;
-  for (const node of nodes) {
-    if (!nodeVisible(node)) continue;
-    const distance = Math.hypot((node.x || 0) - point.x, (node.y || 0) - point.y);
-    const hitRadius = radiusFor(node) + 8;
-    if (distance <= hitRadius && distance < closestDistance) {
-      closest = node;
-      closestDistance = distance;
-    }
-  }
-  return closest;
-}
-
-function createNodeGraphic(node) {
-  const graphic = new PIXI.Graphics();
-  graphic.interactive = true;
-  graphic.buttonMode = true;
-  graphic.cursor = "pointer";
-  graphic.eventMode = "static";
-  graphic.__nodeId = node.id;
-  graphic.on("pointerover", () => {
-    if (draggedNode) return;
-    if (hoverId !== node.id) {
-      hoverId = node.id;
-      draw();
-    }
-  });
-  graphic.on("pointerout", () => {
-    if (draggedNode === node) return;
-    if (hoverId === node.id) {
-      hoverId = undefined;
-      draw();
-    }
-  });
-  return graphic;
-}
-
-function createLabel(node) {
-  return new PIXI.Text(node.label, {
-    fontFamily: "var(--vscode-font-family)",
-    fontSize: 11,
-    fill: 0xd0d0d0,
-  });
-}
-
 function draw() {
   if (!app || !container) return;
-
   const related = relatedNodes();
   const edgeIds = new Set();
   const nodeIds = new Set();
@@ -186,35 +115,35 @@ function draw() {
 
     const active = !related || (related.has(edge.source.id) && related.has(edge.target.id));
     graphic.clear();
-    graphic.lineStyle(option("linkWidth") / 100, 0x7c8b98, active ? 0.6 : 0.08);
+    graphic.lineStyle(option("linkWidth") / 100, 0x7c8b98, active ? 0.6 : 0.1);
     graphic.moveTo(edge.source.x || 0, edge.source.y || 0);
     graphic.lineTo(edge.target.x || 0, edge.target.y || 0);
   }
 
   for (const node of nodes) {
     nodeIds.add(node.id);
-    const graphic = shape(nodeShapes, node.id, () => createNodeGraphic(node));
-    const label = shape(labels, node.id, () => createLabel(node));
+    const graphic = shape(nodeShapes, node.id, () => new PIXI.Graphics());
+    const label = shape(labels, node.id, () => new PIXI.Text(node.label, {
+      fontFamily: "var(--vscode-font-family)",
+      fontSize: 11,
+      fill: 0xd0d0d0,
+    }));
     const visible = nodeVisible(node);
     graphic.visible = visible;
     label.visible = false;
     if (!visible) continue;
 
-    const radius = radiusFor(node);
+    const degree = degrees.get(node.id) || 0;
+    const radius = (5 + Math.min(12, Math.sqrt(degree) * 3)) * option("nodeSize") / 100;
     const active = !related || related.has(node.id);
-    const selected = draggedNode === node;
     const alpha = related && !active ? 0.12 : 1;
 
     graphic.clear();
-    graphic.lineStyle(selected ? 3 : active ? 2 : 1, selected ? 0xffffff : active ? 0xffffff : 0xc8bdff, alpha);
-    graphic.beginFill(
-      node.missing ? 0x767676 : active ? 0xffffff : color(node.folder),
-      alpha,
-    );
-    graphic.drawCircle(0, 0, selected ? radius + 2 : radius);
+    graphic.lineStyle(active ? 2 : 1, active ? 0xffffff : 0xc8bdff, alpha);
+    graphic.beginFill(node.missing ? 0x767676 : active ? 0xffffff : color(node.folder), alpha);
+    graphic.drawCircle(0, 0, radius);
     graphic.endFill();
     graphic.position.set(node.x || 0, node.y || 0);
-    graphic.alpha = 1;
 
     label.visible = option("labels") && viewport.k > 0.45;
     label.alpha = alpha;
@@ -226,24 +155,39 @@ function draw() {
   removeStaleShapes(labels, nodeIds);
 }
 
-function applyViewport(transform) {
-  viewport = transform;
-  container.position.set(viewport.x, viewport.y);
-  container.scale.set(viewport.k);
-  draw();
+function graphPoint(event) {
+  const rect = app.view.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left - viewport.x) / viewport.k,
+    y: (event.clientY - rect.top - viewport.y) / viewport.k,
+  };
+}
+
+function nodeAt(point) {
+  let closest;
+  let closestDistance = Infinity;
+  for (const node of nodes) {
+    if (!nodeVisible(node)) continue;
+    const radius = (5 + Math.min(12, Math.sqrt(degrees.get(node.id) || 0) * 3)) * option("nodeSize") / 100 + 8;
+    const distance = Math.hypot((node.x || 0) - point.x, (node.y || 0) - point.y);
+    if (distance <= radius && distance < closestDistance) {
+      closest = node;
+      closestDistance = distance;
+    }
+  }
+  return closest;
 }
 
 function fitGraph(duration = 300) {
   if (!app || !zoomHandler) return;
   const visibleNodes = nodes.filter(nodeVisible);
+  const { width, height } = viewportSize();
   if (!visibleNodes.length) {
     d3.select(app.view).transition().duration(duration).call(zoomHandler.transform, d3.zoomIdentity);
     return;
   }
 
   const padding = 60;
-  const width = host.clientWidth;
-  const height = host.clientHeight;
   const xs = visibleNodes.map((node) => node.x || 0);
   const ys = visibleNodes.map((node) => node.y || 0);
   const minX = Math.min(...xs);
@@ -260,6 +204,43 @@ function fitGraph(duration = 300) {
   d3.select(app.view).transition().duration(duration).call(zoomHandler.transform, transform);
 }
 
+function createSimulation() {
+  const { width, height } = viewportSize();
+  const linkForce = d3.forceLink(edges)
+    .id((node) => node.id)
+    .distance(option("linkDistance"))
+    .strength(option("linkForce") / 100);
+
+  return d3.forceSimulation(nodes)
+    .force("link", linkForce)
+    .force("charge", d3.forceManyBody().strength(-option("repelForce")))
+    .force("center", d3.forceCenter(width / 2, height / 2).strength(option("centerForce") / 100))
+    .force("collide", d3.forceCollide().radius((node) => {
+      const degree = degrees.get(node.id) || 0;
+      return 8 + Math.min(12, Math.sqrt(degree) * 3) + 3;
+    }).strength(0.8))
+    .on("tick", draw);
+}
+
+function updateSimulationForces(restart = true) {
+  if (!simulation) return;
+  const { width, height } = viewportSize();
+  const linkForce = simulation.force("link");
+  const chargeForce = simulation.force("charge");
+  const centerForce = simulation.force("center");
+
+  linkForce
+    .distance(option("linkDistance"))
+    .strength(option("linkForce") / 100);
+  chargeForce.strength(-option("repelForce"));
+  centerForce
+    .x(width / 2)
+    .y(height / 2)
+    .strength(option("centerForce") / 100);
+
+  if (restart) simulation.alpha(0.5).restart();
+}
+
 function initialise(graph) {
   if (!app) {
     pendingGraph = graph;
@@ -269,95 +250,59 @@ function initialise(graph) {
   try {
     simulation?.stop();
     hoverId = undefined;
-    draggedNode = undefined;
+    viewport = { x: 0, y: 0, k: 1 };
     nodes = (graph.nodes || []).map((node) => ({ ...node }));
-
     const byId = new Map(nodes.map((node) => [node.id, node]));
     edges = (graph.edges || [])
-      .map((edge) => ({
-        ...edge,
-        source: byId.get(edge.source),
-        target: byId.get(edge.target),
-      }))
+      .map((edge) => ({ ...edge, source: byId.get(edge.source), target: byId.get(edge.target) }))
       .filter((edge) => edge.source && edge.target);
-
     rebuildTopology();
 
-    simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(edges).id((node) => node.id).distance(option("linkDistance")).strength(option("linkForce") / 100))
-      .force("charge", d3.forceManyBody().strength(-option("repelForce") * 10))
-      .force("center", d3.forceCenter(host.clientWidth / 2, host.clientHeight / 2).strength(option("centerForce") / 100))
-      .force("collide", d3.forceCollide().radius((node) => radiusFor(node) + 4))
-      .on("tick", draw);
+    simulation = createSimulation();
 
     zoomHandler = d3.zoom()
       .scaleExtent([0.2, 4])
-      .filter((event) => {
-        // Let Pixi own node gestures; D3 owns background pan/zoom.
-        if (event.type === "mousedown" || event.type === "pointerdown") {
-          const point = graphPointFromClient(event.clientX, event.clientY);
-          if (nodeAt(point)) return false;
-        }
-        return !event.button || event.type === "wheel";
-      })
-      .on("zoom", (event) => applyViewport(event.transform));
+      .on("zoom", (event) => {
+        viewport = event.transform;
+        container.position.set(viewport.x, viewport.y);
+        container.scale.set(viewport.k);
+        draw();
+      });
 
     const selection = d3.select(app.view);
     selection.on(".zoom", null).call(zoomHandler);
+    selection.call(d3.drag()
+      .container(app.view)
+      .subject((event) => nodeAt({
+        x: (event.x - viewport.x) / viewport.k,
+        y: (event.y - viewport.y) / viewport.k,
+      }))
+      .on("start", (event) => {
+        if (!event.subject) return;
+        dragStart = { x: event.x, y: event.y };
+        simulation.alphaTarget(0.25).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      })
+      .on("drag", (event) => {
+        if (!event.subject) return;
+        event.subject.fx = (event.x - viewport.x) / viewport.k;
+        event.subject.fy = (event.y - viewport.y) / viewport.k;
+      })
+      .on("end", (event) => {
+        if (!event.subject) return;
+        simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+        if (dragStart && Math.hypot(event.x - dragStart.x, event.y - dragStart.y) < 4)
+          vscode.postMessage({ type: "openNote", id: event.subject.id });
+        dragStart = undefined;
+      }));
+
     draw();
   } catch (error) {
-    vscode.postMessage({
-      type: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    vscode.postMessage({ type: "error", message: error instanceof Error ? error.message : String(error) });
   }
-}
-
-function beginNodeDrag(node, event) {
-  if (draggedNode || !nodeVisible(node)) return;
-  draggedNode = node;
-  pointerId = event.pointerId;
-  movedDuringDrag = false;
-  dragStart = { x: event.clientX, y: event.clientY };
-  node.fx = node.x;
-  node.fy = node.y;
-  simulation?.alphaTarget(0.3).restart();
-  hoverId = node.id;
-  draw();
-  try {
-    app.view.setPointerCapture(pointerId);
-  } catch {}
-}
-
-function moveNodeDrag(event) {
-  if (!draggedNode || event.pointerId !== pointerId) return;
-  const dx = event.clientX - dragStart.x;
-  const dy = event.clientY - dragStart.y;
-  if (Math.hypot(dx, dy) > 4) movedDuringDrag = true;
-
-  const point = graphPointFromClient(event.clientX, event.clientY);
-  draggedNode.fx = point.x;
-  draggedNode.fy = point.y;
-  draw();
-}
-
-function endNodeDrag(event) {
-  if (!draggedNode || event.pointerId !== pointerId) return;
-  const node = draggedNode;
-  const wasClick = !movedDuringDrag;
-
-  draggedNode = undefined;
-  pointerId = null;
-  node.fx = null;
-  node.fy = null;
-  simulation?.alphaTarget(0);
-  draw();
-
-  try {
-    app.view.releasePointerCapture(event.pointerId);
-  } catch {}
-
-  if (wasClick) vscode.postMessage({ type: "openNote", id: node.id });
 }
 
 async function setup() {
@@ -369,61 +314,42 @@ async function setup() {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     });
-
     host.replaceChildren(app.view);
     container = new PIXI.Container();
     app.stage.addChild(container);
 
     resizeObserver = new ResizeObserver(() => {
       if (!simulation) return;
-      simulation.force("center", d3.forceCenter(host.clientWidth / 2, host.clientHeight / 2)
-        .strength(option("centerForce")));
+      updateSimulationForces(false);
       simulation.alpha(0.15).restart();
       draw();
     });
     resizeObserver.observe(host);
 
-    app.view.addEventListener("pointerdown", (event) => {
-      const node = nodeAt(graphPointFromClient(event.clientX, event.clientY));
-      if (node) beginNodeDrag(node, event);
-    });
     app.view.addEventListener("pointermove", (event) => {
-      if (draggedNode) {
-        moveNodeDrag(event);
-        return;
-      }
-      const node = nodeAt(graphPointFromClient(event.clientX, event.clientY));
+      const node = nodeAt(graphPoint(event));
       if (node?.id !== hoverId) {
         hoverId = node?.id;
         draw();
       }
     });
-    app.view.addEventListener("pointerup", endNodeDrag);
-    app.view.addEventListener("pointercancel", endNodeDrag);
-    app.view.addEventListener("pointerleave", (event) => {
-      if (draggedNode) return;
-      const node = nodeAt(graphPointFromClient(event.clientX, event.clientY));
-      if (!node) {
+    app.view.addEventListener("pointerleave", () => {
+      if (hoverId !== undefined) {
         hoverId = undefined;
         draw();
       }
     });
 
     vscode.postMessage({ type: "ready" });
-
     if (pendingGraph) {
       const nextGraph = pendingGraph;
       pendingGraph = null;
       initialise(nextGraph);
       document.querySelector("#emptyState").hidden = true;
-      document.querySelector("#status").textContent =
-        `Vault selected: ${nextGraph.vaultPath || ""} · ${nextGraph.nodes.length} notes · ${nextGraph.edges.length} links`;
+      document.querySelector("#status").textContent = `Vault selected: ${nextGraph.vaultPath || ""} · ${nextGraph.nodes.length} notes · ${nextGraph.edges.length} links`;
     }
   } catch (error) {
-    vscode.postMessage({
-      type: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+    vscode.postMessage({ type: "error", message: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -440,14 +366,7 @@ document.querySelector("#closeSettings").onclick = () => {
 
 for (const control of Object.values(controls)) {
   control.addEventListener("input", () => {
-    if (simulation) {
-      simulation.force("link").distance(option("linkDistance"));
-      simulation.force("link").strength(option("linkForce") / 100);
-      simulation.force("charge").strength(-option("repelForce") * 10);
-      simulation.force("center").strength(option("centerForce") / 100);
-      simulation.force("collide").radius((node) => radiusFor(node) + 4);
-      simulation.alpha(0.25).restart();
-    }
+    updateSimulationForces();
     draw();
   });
 }
@@ -457,7 +376,7 @@ document.querySelector("#reset").onclick = () => {
     if (typeof value === "boolean") controls[name].checked = value;
     else controls[name].value = value;
   }
-  if (simulation) simulation.alpha(0.25).restart();
+  updateSimulationForces();
   draw();
 };
 
@@ -468,18 +387,15 @@ addEventListener("message", (event) => {
     document.querySelector("#emptyState").hidden = false;
     return;
   }
-
   if (event.data.type !== "graph") return;
   if (!app) {
     pendingGraph = event.data.graph;
     document.querySelector("#emptyState").textContent = "Initializing graph renderer...";
     return;
   }
-
   initialise(event.data.graph);
   document.querySelector("#emptyState").hidden = true;
-  document.querySelector("#status").textContent =
-    `Vault selected: ${event.data.vaultPath} · ${event.data.graph.nodes.length} notes · ${event.data.graph.edges.length} links`;
+  document.querySelector("#status").textContent = `Vault selected: ${event.data.vaultPath} · ${event.data.graph.nodes.length} notes · ${event.data.graph.edges.length} links`;
 });
 
 addEventListener("beforeunload", () => {
