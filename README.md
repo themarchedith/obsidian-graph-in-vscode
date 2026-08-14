@@ -17,6 +17,8 @@ Use **Choose Vault Folder** to switch vaults and **Refresh Graph** after changes
 
 The webview does not use runtime dependencies, inline scripts, or remote resources.
 
+Author: @gaurav7902
+
 ## Run locally
 
 Open `graph-extension-vscode` in VS Code and press `F5` to launch an Extension Development Host. This project intentionally has no runtime dependency or build step; `extension.js` is directly loaded by VS Code.

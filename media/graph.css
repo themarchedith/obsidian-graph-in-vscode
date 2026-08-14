@@ -85,6 +85,10 @@ main {
   overflow-y: auto;
 }
 
+#settings[hidden] {
+  display: none !important;
+}
+
 .settings-header {
   display: flex;
   justify-content: space-between;

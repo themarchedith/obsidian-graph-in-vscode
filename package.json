@@ -1,50 +1,50 @@
 {
-  "name": "obsidian-vault-graph",
-  "displayName": "Obsidian Vault Graph",
-  "description": "Explore an Obsidian vault's Markdown links as an interactive graph.",
-  "version": "0.1.0",
-  "publisher": "local",
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "categories": [
-    "Visualization",
-    "Other"
-  ],
-  "activationEvents": [
-    "onCommand:obsidianVaultGraph.open",
-    "onCommand:obsidianVaultGraph.chooseVault",
-    "onCommand:obsidianVaultGraph.refresh",
-    "onLanguage:markdown"
-  ],
-  "main": "./extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "obsidianVaultGraph.open",
-        "title": "Obsidian Vault Graph: Open Graph"
-      },
-      {
-        "command": "obsidianVaultGraph.chooseVault",
-        "title": "Obsidian Vault Graph: Choose Vault Folder"
-      },
-      {
-        "command": "obsidianVaultGraph.refresh",
-        "title": "Obsidian Vault Graph: Refresh Graph"
-      }
+    "name": "obsidian-vault-graph",
+    "displayName": "Obsidian Vault Graph",
+    "description": "Explore an Obsidian vault's Markdown links as an interactive graph.",
+    "version": "0.1.0",
+    "publisher": "local",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Visualization",
+        "Other"
     ],
-    "configuration": {
-      "title": "Obsidian Vault Graph",
-      "properties": {
-        "obsidianVaultGraph.vaultPath": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to the Obsidian vault displayed by the graph."
+    "activationEvents": [
+        "onCommand:obsidianVaultGraph.open",
+        "onCommand:obsidianVaultGraph.chooseVault",
+        "onCommand:obsidianVaultGraph.refresh",
+        "onLanguage:markdown"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "obsidianVaultGraph.open",
+                "title": "Obsidian Vault Graph: Open Graph"
+            },
+            {
+                "command": "obsidianVaultGraph.chooseVault",
+                "title": "Obsidian Vault Graph: Choose Vault Folder"
+            },
+            {
+                "command": "obsidianVaultGraph.refresh",
+                "title": "Obsidian Vault Graph: Refresh Graph"
+            }
+        ],
+        "configuration": {
+            "title": "Obsidian Vault Graph",
+            "properties": {
+                "obsidianVaultGraph.vaultPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Absolute path to the Obsidian vault displayed by the graph."
+                }
+            }
         }
-      }
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.85.0"
     }
-  },
-  "devDependencies": {
-    "@types/vscode": "^1.85.0"
-  }
 }
