@@ -266,8 +266,13 @@ function initialise(graph) {
     });
 
     const selection = d3.select(app.view);
-    selection.on(".zoom", null).call(zoomHandler);
-    selection.call(d3.drag()
+    // Bind drag BEFORE zoom. d3-drag calls stopImmediatePropagation() on
+    // mousedown when it finds a valid subject (a node), which only prevents
+    // other listeners on the same element from firing if those listeners
+    // are registered *after* drag's. Binding zoom first meant its pan
+    // handler always ran before drag could claim the event, so grabbing a
+    // node just panned the canvas instead of dragging the node.
+    selection.on(".drag", null).call(d3.drag()
       .container(app.view)
       .subject((event) => nodeAt({ x: (event.x - viewport.x) / viewport.k, y: (event.y - viewport.y) / viewport.k }))
       .on("start", (event) => {
@@ -289,6 +294,7 @@ function initialise(graph) {
         event.subject.fy = null;
         dragStart = undefined;
       }));
+    selection.on(".zoom", null).call(zoomHandler);
 
     draw();
   } catch (error) {
