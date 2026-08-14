@@ -25,10 +25,7 @@ function option(name) {
 }
 
 function viewportSize() {
-  return {
-    width: Math.max(1, host.clientWidth),
-    height: Math.max(1, host.clientHeight),
-  };
+  return { width: Math.max(1, host.clientWidth), height: Math.max(1, host.clientHeight) };
 }
 
 function color(folder) {
@@ -112,7 +109,6 @@ function draw() {
     const visible = nodeVisible(edge.source) && nodeVisible(edge.target);
     graphic.visible = visible;
     if (!visible) continue;
-
     const active = !related || (related.has(edge.source.id) && related.has(edge.target.id));
     graphic.clear();
     graphic.lineStyle(option("linkWidth") / 100, 0x7c8b98, active ? 0.6 : 0.1);
@@ -123,28 +119,21 @@ function draw() {
   for (const node of nodes) {
     nodeIds.add(node.id);
     const graphic = shape(nodeShapes, node.id, () => new PIXI.Graphics());
-    const label = shape(labels, node.id, () => new PIXI.Text(node.label, {
-      fontFamily: "var(--vscode-font-family)",
-      fontSize: 11,
-      fill: 0xd0d0d0,
-    }));
+    const label = shape(labels, node.id, () => new PIXI.Text(node.label, { fontFamily: "var(--vscode-font-family)", fontSize: 11, fill: 0xd0d0d0 }));
     const visible = nodeVisible(node);
     graphic.visible = visible;
     label.visible = false;
     if (!visible) continue;
-
     const degree = degrees.get(node.id) || 0;
     const radius = (5 + Math.min(12, Math.sqrt(degree) * 3)) * option("nodeSize") / 100;
     const active = !related || related.has(node.id);
     const alpha = related && !active ? 0.12 : 1;
-
     graphic.clear();
     graphic.lineStyle(active ? 2 : 1, active ? 0xffffff : 0xc8bdff, alpha);
     graphic.beginFill(node.missing ? 0x767676 : active ? 0xffffff : color(node.folder), alpha);
     graphic.drawCircle(0, 0, radius);
     graphic.endFill();
     graphic.position.set(node.x || 0, node.y || 0);
-
     label.visible = option("labels") && viewport.k > 0.45;
     label.alpha = alpha;
     label.position.set((node.x || 0) + radius + 4, (node.y || 0) - 6);
@@ -157,10 +146,7 @@ function draw() {
 
 function graphPoint(event) {
   const rect = app.view.getBoundingClientRect();
-  return {
-    x: (event.clientX - rect.left - viewport.x) / viewport.k,
-    y: (event.clientY - rect.top - viewport.y) / viewport.k,
-  };
+  return { x: (event.clientX - rect.left - viewport.x) / viewport.k, y: (event.clientY - rect.top - viewport.y) / viewport.k };
 }
 
 function nodeAt(point) {
@@ -178,6 +164,45 @@ function nodeAt(point) {
   return closest;
 }
 
+function distanceToSegment(point, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx === 0 && dy === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy)));
+  const x = a.x + t * dx;
+  const y = a.y + t * dy;
+  return Math.hypot(point.x - x, point.y - y);
+}
+
+function edgeAt(point) {
+  let closest;
+  let closestDistance = Infinity;
+  const tolerance = Math.max(7, 6 / viewport.k);
+  for (const edge of edges) {
+    if (!nodeVisible(edge.source) || !nodeVisible(edge.target)) continue;
+    const distance = distanceToSegment(point, { x: edge.source.x || 0, y: edge.source.y || 0 }, { x: edge.target.x || 0, y: edge.target.y || 0 });
+    if (distance <= tolerance && distance < closestDistance) {
+      closest = edge;
+      closestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function openGraphTarget(point) {
+  const node = nodeAt(point);
+  if (node) {
+    vscode.postMessage({ type: "openNote", id: node.id });
+    return true;
+  }
+  const edge = edgeAt(point);
+  if (edge) {
+    vscode.postMessage({ type: "openNote", id: edge.target.id });
+    return true;
+  }
+  return false;
+}
+
 function fitGraph(duration = 300) {
   if (!app || !zoomHandler) return;
   const visibleNodes = nodes.filter(nodeVisible);
@@ -186,7 +211,6 @@ function fitGraph(duration = 300) {
     d3.select(app.view).transition().duration(duration).call(zoomHandler.transform, d3.zoomIdentity);
     return;
   }
-
   const padding = 60;
   const xs = visibleNodes.map((node) => node.x || 0);
   const ys = visibleNodes.map((node) => node.y || 0);
@@ -196,8 +220,7 @@ function fitGraph(duration = 300) {
   const maxY = Math.max(...ys);
   const graphWidth = Math.max(maxX - minX, 1);
   const graphHeight = Math.max(maxY - minY, 1);
-  const scale = Math.max(0.2, Math.min(4,
-    Math.min((width - padding * 2) / graphWidth, (height - padding * 2) / graphHeight)));
+  const scale = Math.max(0.2, Math.min(4, Math.min((width - padding * 2) / graphWidth, (height - padding * 2) / graphHeight)));
   const x = width / 2 - ((minX + maxX) / 2) * scale;
   const y = height / 2 - ((minY + maxY) / 2) * scale;
   const transform = d3.zoomIdentity.translate(x, y).scale(scale);
@@ -206,77 +229,47 @@ function fitGraph(duration = 300) {
 
 function createSimulation() {
   const { width, height } = viewportSize();
-  const linkForce = d3.forceLink(edges)
-    .id((node) => node.id)
-    .distance(option("linkDistance"))
-    .strength(option("linkForce") / 100);
-
+  const linkForce = d3.forceLink(edges).id((node) => node.id).distance(option("linkDistance")).strength(option("linkForce") / 100);
   return d3.forceSimulation(nodes)
     .force("link", linkForce)
     .force("charge", d3.forceManyBody().strength(-option("repelForce")))
     .force("center", d3.forceCenter(width / 2, height / 2).strength(option("centerForce") / 100))
-    .force("collide", d3.forceCollide().radius((node) => {
-      const degree = degrees.get(node.id) || 0;
-      return 8 + Math.min(12, Math.sqrt(degree) * 3) + 3;
-    }).strength(0.8))
+    .force("collide", d3.forceCollide().radius((node) => 8 + Math.min(12, Math.sqrt(degrees.get(node.id) || 0) * 3) + 3).strength(0.8))
     .on("tick", draw);
 }
 
 function updateSimulationForces(restart = true) {
   if (!simulation) return;
   const { width, height } = viewportSize();
-  const linkForce = simulation.force("link");
-  const chargeForce = simulation.force("charge");
-  const centerForce = simulation.force("center");
-
-  linkForce
-    .distance(option("linkDistance"))
-    .strength(option("linkForce") / 100);
-  chargeForce.strength(-option("repelForce"));
-  centerForce
-    .x(width / 2)
-    .y(height / 2)
-    .strength(option("centerForce") / 100);
-
+  simulation.force("link").distance(option("linkDistance")).strength(option("linkForce") / 100);
+  simulation.force("charge").strength(-option("repelForce"));
+  simulation.force("center").x(width / 2).y(height / 2).strength(option("centerForce") / 100);
   if (restart) simulation.alpha(0.5).restart();
 }
 
 function initialise(graph) {
-  if (!app) {
-    pendingGraph = graph;
-    return;
-  }
-
+  if (!app) { pendingGraph = graph; return; }
   try {
     simulation?.stop();
     hoverId = undefined;
     viewport = { x: 0, y: 0, k: 1 };
     nodes = (graph.nodes || []).map((node) => ({ ...node }));
     const byId = new Map(nodes.map((node) => [node.id, node]));
-    edges = (graph.edges || [])
-      .map((edge) => ({ ...edge, source: byId.get(edge.source), target: byId.get(edge.target) }))
-      .filter((edge) => edge.source && edge.target);
+    edges = (graph.edges || []).map((edge) => ({ ...edge, source: byId.get(edge.source), target: byId.get(edge.target) })).filter((edge) => edge.source && edge.target);
     rebuildTopology();
-
     simulation = createSimulation();
-
-    zoomHandler = d3.zoom()
-      .scaleExtent([0.2, 4])
-      .on("zoom", (event) => {
-        viewport = event.transform;
-        container.position.set(viewport.x, viewport.y);
-        container.scale.set(viewport.k);
-        draw();
-      });
+    zoomHandler = d3.zoom().scaleExtent([0.2, 4]).on("zoom", (event) => {
+      viewport = event.transform;
+      container.position.set(viewport.x, viewport.y);
+      container.scale.set(viewport.k);
+      draw();
+    });
 
     const selection = d3.select(app.view);
     selection.on(".zoom", null).call(zoomHandler);
     selection.call(d3.drag()
       .container(app.view)
-      .subject((event) => nodeAt({
-        x: (event.x - viewport.x) / viewport.k,
-        y: (event.y - viewport.y) / viewport.k,
-      }))
+      .subject((event) => nodeAt({ x: (event.x - viewport.x) / viewport.k, y: (event.y - viewport.y) / viewport.k }))
       .on("start", (event) => {
         if (!event.subject) return;
         dragStart = { x: event.x, y: event.y };
@@ -294,8 +287,6 @@ function initialise(graph) {
         simulation.alphaTarget(0);
         event.subject.fx = null;
         event.subject.fy = null;
-        if (dragStart && Math.hypot(event.x - dragStart.x, event.y - dragStart.y) < 4)
-          vscode.postMessage({ type: "openNote", id: event.subject.id });
         dragStart = undefined;
       }));
 
@@ -307,13 +298,7 @@ function initialise(graph) {
 
 async function setup() {
   try {
-    app = new PIXI.Application({
-      resizeTo: host,
-      backgroundAlpha: 0,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
-    });
+    app = new PIXI.Application({ resizeTo: host, backgroundAlpha: 0, antialias: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
     host.replaceChildren(app.view);
     container = new PIXI.Container();
     app.stage.addChild(container);
@@ -326,6 +311,18 @@ async function setup() {
     });
     resizeObserver.observe(host);
 
+    let pointerDown;
+    app.view.addEventListener("pointerdown", (event) => {
+      const point = graphPoint(event);
+      pointerDown = { x: event.clientX, y: event.clientY, point };
+    });
+    app.view.addEventListener("pointerup", (event) => {
+      if (!pointerDown) return;
+      const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
+      const point = graphPoint(event);
+      pointerDown = undefined;
+      if (moved <= 5) openGraphTarget(point);
+    });
     app.view.addEventListener("pointermove", (event) => {
       const node = nodeAt(graphPoint(event));
       if (node?.id !== hoverId) {
@@ -334,6 +331,7 @@ async function setup() {
       }
     });
     app.view.addEventListener("pointerleave", () => {
+      pointerDown = undefined;
       if (hoverId !== undefined) {
         hoverId = undefined;
         draw();
@@ -360,15 +358,10 @@ document.querySelector("#settingsButton").onclick = () => {
   const settings = document.querySelector("#settings");
   settings.hidden = !settings.hidden;
 };
-document.querySelector("#closeSettings").onclick = () => {
-  document.querySelector("#settings").hidden = true;
-};
+document.querySelector("#closeSettings").onclick = () => { document.querySelector("#settings").hidden = true; };
 
 for (const control of Object.values(controls)) {
-  control.addEventListener("input", () => {
-    updateSimulationForces();
-    draw();
-  });
+  control.addEventListener("input", () => { updateSimulationForces(); draw(); });
 }
 
 document.querySelector("#reset").onclick = () => {
